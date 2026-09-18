@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 自媒体工作坊 · 四个爆款助手 — 谈谈在成长</title>
+  <meta name="description" content="谈谈在成长 · AI 自媒体工作坊：调用 DeepSeek 大模型的四个爆款助手——爆款选题、爆款改写、爆款标题、爆款封面文案方案，输入你的赛道马上开工。" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌱</text></svg>" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body class="workshop-page">
+
+  <!-- 全局背景光效 -->
+  <div class="bg-fx" aria-hidden="true">
+    <div class="bg-grid"></div>
+    <div class="glow glow-1"></div>
+    <div class="glow glow-2"></div>
+    <div class="glow glow-3"></div>
+  </div>
+
+  <!-- ======================= 导航栏 ======================= -->
+  <header class="navbar" id="navbar">
+    <div class="container nav-inner">
+      <a href="index.html" class="logo">
+        <span class="logo-mark">🌱</span>
+        <span class="logo-text">谈谈在成长</span>
+      </a>
+      <nav class="nav-links" id="navLinks">
+        <a href="index.html#about">关于我</a>
+        <a href="index.html#courses">课程体系</a>
+        <a href="index.html#cases">学员案例</a>
+        <a href="workshop.html">AI 工作坊</a>
+      </nav>
+      <div class="nav-actions">
+        <a href="index.html#contact" class="btn btn-primary btn-sm">联系我</a>
+        <button class="nav-toggle" id="navToggle" aria-label="打开菜单">
+          <span></span><span></span><span></span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ======================= 页面 HERO ======================= -->
+    <section class="page-hero ws-hero">
+      <div class="container">
+        <a class="back-link reveal" href="index.html">← 返回首页</a>
+        <div class="hero-badge reveal">
+          <span class="badge-dot"></span>
+          AI 自媒体工作坊 · DeepSeek 大模型驱动
+        </div>
+        <h1 class="page-title reveal">四个爆款助手，<span class="gradient-text">随时开工</span></h1>
+        <p class="page-sub reveal">
+          爆款选题 · 爆款改写 · 爆款标题 · 爆款封面。<br class="br-desktop" />
+          输入你的赛道和内容，AI 直接给你能用的产出。
+        </p>
+      </div>
+    </section>
+
+    <!-- ======================= 设置区 ======================= -->
+    <section class="ws-settings-wrap">
+      <div class="container">
+        <div class="ws-settings reveal" id="wsSettings">
+          <div class="ws-key-block">
+            <label for="dsKeyInput">🔑 DeepSeek API Key</label>
+            <div class="ws-key-row">
+              <input type="password" id="dsKeyInput" placeholder="sk-…（点眼睛可显示）" autocomplete="off" spellcheck="false" />
+              <button class="ws-eye" id="dsKeyEye" type="button" aria-label="显示/隐藏密钥">👁</button>
+            </div>
+            <p class="ws-key-hint">
+              还没有密钥？到 <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> 注册并创建 API Key。
+              密钥只保存在你自己浏览器的本地存储里，不会上传到任何服务器。
+            </p>
+          </div>
+          <div class="ws-model-block">
+            <label for="dsModelSelect">🧠 模型</label>
+            <select id="dsModelSelect">
+              <option value="deepseek-chat">deepseek-chat（V3，推荐）</option>
+              <option value="deepseek-reasoner">deepseek-reasoner（R1，更深更慢）</option>
+            </select>
+            <p class="ws-model-status" id="wsModelStatus">状态：<b class="ws-status-off">未设置密钥</b></p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ======================= 工作区 ======================= -->
+    <section class="ws-main-wrap">
+      <div class="container">
+
+        <!-- 助手切换 -->
+        <div class="ws-tabs reveal" id="wsTabs" role="tablist">
+          <button class="ws-tab active" data-ws="topics" role="tab" aria-selected="true">💡 爆款选题</button>
+          <button class="ws-tab" data-ws="rewrite" role="tab" aria-selected="false">✍️ 爆款改写</button>
+          <button class="ws-tab" data-ws="titles" role="tab" aria-selected="false">🎯 爆款标题</button>
+          <button class="ws-tab" data-ws="cover" role="tab" aria-selected="false">🖼️ 爆款封面</button>
+        </div>
+
+        <!-- 四个助手面板（共用一套结构，由 JS 填充历史） -->
+        <div class="ws-panel reveal" id="wsPanel">
+          <div class="ws-panel-head">
+            <div class="ws-panel-title">
+              <span class="ws-panel-icon" id="wsPanelIcon">💡</span>
+              <div>
+                <h2 id="wsPanelName">爆款选题策划师</h2>
+                <p id="wsPanelDesc">说清楚你的赛道、人群和产品，AI 给你一批能打的选题。</p>
+              </div>
+            </div>
+            <div class="ws-panel-actions">
+              <button class="ws-mini-btn" id="wsCopyBtn" title="复制最近一条回答">📋 复制回答</button>
+              <button class="ws-mini-btn" id="wsClearBtn" title="清空当前助手对话">🗑 清空对话</button>
+            </div>
+          </div>
+
+          <div class="ws-chat" id="wsChat" aria-live="polite"></div>
+
+          <div class="ws-chips" id="wsChips"></div>
+
+          <div class="ws-input-row">
+            <textarea id="wsInput" rows="2" placeholder="把你的赛道、内容或要求发给 AI…（Enter 发送，Shift+Enter 换行）"></textarea>
+            <div class="ws-send-col">
+              <button class="btn btn-primary ws-send" id="wsSendBtn">发 送</button>
+              <button class="btn btn-ghost ws-stop hidden" id="wsStopBtn">停 止</button>
+            </div>
+          </div>
+
+          <p class="ws-note">AI 生成内容仅供参考，发布前记得用你自己的口吻再过一遍。封面助手输出的是封面文案与构图方案（含 AI 绘图提示词），直接出图需要配合其他绘图工具。</p>
+        </div>
+
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ======================= 页脚 ======================= -->
+  <footer class="footer">
+    <div class="container footer-inner">
+      <div class="footer-left">
+        <span class="logo-mark">🌱</span>
+        <span>谈谈在成长</span>
+      </div>
+      <p class="footer-copy">© 2026 谈谈在成长 · 自媒体这件事，值得好好谈谈</p>
+      <div class="footer-links">
+        <a href="index.html">返回首页</a>
+        <a href="index.html#courses">课程体系</a>
+        <a href="course-offline.html">两天一夜实战营</a>
+        <a href="course-online.html">打造超级个体</a>
+      </div>
+    </div>
+  </footer>
+
+  <script src="script.js"></script>
+  <script src="workshop.js"></script>
+</body>
+</html>

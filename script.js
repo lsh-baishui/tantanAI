@@ -89,27 +89,29 @@ document.querySelectorAll(".marquee-track").forEach((track) => {
   track.innerHTML += track.innerHTML;
 });
 
-// ---------- 联系弹窗 ----------
+// ---------- 联系弹窗（仅在存在弹窗的页面生效） ----------
 const modal = document.getElementById("contactModal");
-function openModal() {
-  modal.classList.add("open");
-  modal.setAttribute("aria-hidden", "false");
-  document.body.classList.add("modal-open");
+if (modal) {
+  function openModal() {
+    modal.classList.add("open");
+    modal.setAttribute("aria-hidden", "false");
+    document.body.classList.add("modal-open");
+  }
+  function closeModal() {
+    modal.classList.remove("open");
+    modal.setAttribute("aria-hidden", "true");
+    document.body.classList.remove("modal-open");
+  }
+  document.querySelectorAll(".js-contact").forEach((el) =>
+    el.addEventListener("click", openModal)
+  );
+  modal.querySelectorAll(".js-modal-close").forEach((el) =>
+    el.addEventListener("click", closeModal)
+  );
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
+  });
 }
-function closeModal() {
-  modal.classList.remove("open");
-  modal.setAttribute("aria-hidden", "true");
-  document.body.classList.remove("modal-open");
-}
-document.querySelectorAll(".js-contact").forEach((el) =>
-  el.addEventListener("click", openModal)
-);
-modal.querySelectorAll(".js-modal-close").forEach((el) =>
-  el.addEventListener("click", closeModal)
-);
-document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && modal.classList.contains("open")) closeModal();
-});
 
 // ---------- 二维码：qr.png 存在则显示，否则显示占位提示 ----------
 document.querySelectorAll(".qr-box").forEach((box) => {
