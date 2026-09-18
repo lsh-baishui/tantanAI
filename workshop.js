@@ -252,22 +252,25 @@
   // ---------- 代理通道 ----------
   async function pickProxy() {
     if (activeProxy) return activeProxy;
-    for (const p of PROXIES) {
-      try {
-        const r = await Promise.race([
-          fetch(p.health),
-          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 5000)),
-        ]);
-        if (r && r.ok) {
-          activeProxy = p;
-          renderServiceStatus(true, "在线 ✓ · " + p.name);
-          return p;
+    // 云函数有冷启动，多试一轮、放宽超时
+    for (let attempt = 0; attempt < 2 && !activeProxy; attempt++) {
+      for (const p of PROXIES) {
+        try {
+          const r = await Promise.race([
+            fetch(p.health),
+            new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 8000)),
+          ]);
+          if (r && r.ok) {
+            activeProxy = p;
+            renderServiceStatus(true, "在线 ✓ · " + p.name);
+            return p;
+          }
+        } catch (e) {
+          /* 尝试下一个通道 */
         }
-      } catch (e) {
-        /* 尝试下一个通道 */
       }
     }
-    renderServiceStatus(false, "服务暂时不可用");
+    renderServiceStatus(false, "暂未连通（仍可尝试发送）");
     return null;
   }
 
@@ -278,9 +281,11 @@
     localStorage.setItem(LS.model, modelSelect.value);
   });
 
-  // 启动时探测可用通道
+  // 启动时探测可用通道（失败稍后自动重试，兼顾云函数冷启动）
   renderServiceStatus(false, "检测中…");
-  pickProxy();
+  pickProxy().then((p) => {
+    if (!p) setTimeout(() => pickProxy(), 4000);
+  });
 
   // ---------- 切换助手 ----------
   tabsEl.addEventListener("click", (e) => {
@@ -347,16 +352,10 @@
     const ai = bubble("assistant", "", true);
     let full = "";
 
-    // 确保有一条可用通道
-    if (!activeProxy) await pickProxy();
-    if (!activeProxy) {
-      ai.body.classList.remove("ws-streaming");
-      ai.body.innerHTML =
-        '<span class="ws-error">AI 服务暂时不可用，请稍后再试；如果持续如此请联系谈谈。</span>';
-      setGenerating(false);
-      controller = null;
-      return;
-    }
+    // 不依赖健康探测，直接逐条通道发真实请求；网络不通或限流时换下一个通道
+    const order = [];
+    if (activeProxy) order.push(activeProxy);
+    for (const p of PROXIES) if (!order.includes(p)) order.push(p);
 
     controller = new AbortController();
     const messages = [
@@ -378,28 +377,49 @@
       });
     }
 
-    try {
-      // 网络层失败（超时/被墙/断网）时，自动切到另一个通道重试一次
-      let res;
+    let res = null;
+    let lastStatus = 0;
+    for (const p of order) {
+      activeProxy = p;
+      let r;
       try {
-        res = await callProxy(activeProxy);
+        r = await callProxy(p);
       } catch (netErr) {
         if (netErr && netErr.name === "AbortError") throw netErr;
-        const other = PROXIES.find((p) => p !== activeProxy);
-        if (!other) throw netErr;
-        activeProxy = other;
-        renderServiceStatus(true, "在线 ✓ · " + other.name + "（已自动切换）");
-        res = await callProxy(other);
+        continue; // 这条线路不通（超时/被墙/断网），换下一个
       }
-
-      if (!res.ok) {
-        ai.body.classList.remove("ws-streaming");
-        ai.body.innerHTML = '<span class="ws-error">' + friendlyError(res.status) + "</span>";
-        setGenerating(false);
-        controller = null;
-        return;
+      if (r.ok) {
+        res = r;
+        break;
       }
+      lastStatus = r.status;
+      if (r.status === 429 || r.status >= 500) continue; // 限流或服务故障，换下一个通道
+      res = r; // 其他状态（403/402 等）按此响应给出提示
+      break;
+    }
 
+    if (!res) {
+      ai.body.classList.remove("ws-streaming");
+      ai.body.innerHTML =
+        '<span class="ws-error">' +
+        (lastStatus
+          ? friendlyError(lastStatus) + "（两条线路都已尝试）"
+          : "第一次唤起 AI 服务可能较慢，请稍等几秒再发一次；如果多次失败请联系谈谈。") +
+        "</span>";
+      setGenerating(false);
+      controller = null;
+      return;
+    }
+
+    if (!res.ok) {
+      ai.body.classList.remove("ws-streaming");
+      ai.body.innerHTML = '<span class="ws-error">' + friendlyError(res.status) + "</span>";
+      setGenerating(false);
+      controller = null;
+      return;
+    }
+
+    try {
       const ct = (res.headers.get("content-type") || "").toLowerCase();
       if (ct.indexOf("text/event-stream") !== -1) {
         // 流式（Cloudflare 通道）：逐段渲染
