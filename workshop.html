@@ -61,25 +61,17 @@
     <!-- ======================= 设置区 ======================= -->
     <section class="ws-settings-wrap">
       <div class="container">
-        <div class="ws-settings reveal" id="wsSettings">
-          <div class="ws-key-block">
-            <label for="dsKeyInput">🔑 DeepSeek API Key</label>
-            <div class="ws-key-row">
-              <input type="password" id="dsKeyInput" placeholder="sk-…（点眼睛可显示）" autocomplete="off" spellcheck="false" />
-              <button class="ws-eye" id="dsKeyEye" type="button" aria-label="显示/隐藏密钥">👁</button>
-            </div>
-            <p class="ws-key-hint">
-              还没有密钥？到 <a href="https://platform.deepseek.com" target="_blank" rel="noopener">platform.deepseek.com</a> 注册并创建 API Key。
-              密钥只保存在你自己浏览器的本地存储里，不会上传到任何服务器。
-            </p>
-          </div>
+        <div class="ws-settings ws-settings-single reveal" id="wsSettings">
           <div class="ws-model-block">
             <label for="dsModelSelect">🧠 模型</label>
             <select id="dsModelSelect">
               <option value="deepseek-chat">deepseek-chat（V3，推荐）</option>
               <option value="deepseek-reasoner">deepseek-reasoner（R1，更深更慢）</option>
             </select>
-            <p class="ws-model-status" id="wsModelStatus">状态：<b class="ws-status-off">未设置密钥</b></p>
+          </div>
+          <div class="ws-service-block">
+            <p class="ws-nokey-note">无需任何配置，打开就能用。AI 服务由官网提供并统一维护。</p>
+            <p class="ws-model-status" id="wsServiceStatus">AI 服务：<b class="ws-status-off">检测中…</b></p>
           </div>
         </div>
       </div>

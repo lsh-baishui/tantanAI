@@ -1,14 +1,29 @@
 /* ============================================================
    AI 自媒体工作坊 — DeepSeek 驱动的四个爆款助手
-   密钥仅存放在访客本地浏览器（localStorage），不上传任何服务器
+   调用链：网页 → 代理（腾讯云函数 / Cloudflare Worker）→ DeepSeek
+   API Key 只存在于两个代理的服务端，不出现在任何网页代码中。
    ============================================================ */
 
 (function () {
   "use strict";
 
-  const API_URL = "https://api.deepseek.com/v1/chat/completions";
+  // 双通道：国内优先走腾讯云函数（直连快），备用/海外走 Cloudflare Worker。
+  // 任一通道网络不通时自动切换到另一个。
+  const PROXIES = [
+    {
+      name: "腾讯云通道",
+      chat: "https://baishui-001-d4gli52sbb9e0b855.service.tcloudbase.com/deepseek-proxy",
+      health: "https://baishui-001-d4gli52sbb9e0b855.service.tcloudbase.com/deepseek-proxy/health",
+    },
+    {
+      name: "Cloudflare 通道",
+      chat: "https://tantan-deepseek-proxy.lsh-baishui.workers.dev/v1/chat/completions",
+      health: "https://tantan-deepseek-proxy.lsh-baishui.workers.dev/health",
+    },
+  ];
+  let activeProxy = null;
+
   const LS = {
-    key: "ws_ds_key",
     model: "ws_ds_model",
     hist: (id) => "ws_hist_" + id,
   };
@@ -87,10 +102,8 @@
 
   // ---------- DOM ----------
   const $ = (id) => document.getElementById(id);
-  const keyInput = $("dsKeyInput");
-  const keyEye = $("dsKeyEye");
   const modelSelect = $("dsModelSelect");
-  const modelStatus = $("wsModelStatus");
+  const serviceStatus = $("wsServiceStatus");
   const tabsEl = $("wsTabs");
   const panelIcon = $("wsPanelIcon");
   const panelName = $("wsPanelName");
@@ -108,9 +121,6 @@
   let generating = false;
 
   // ---------- 工具函数 ----------
-  function getKey() {
-    return (localStorage.getItem(LS.key) || "").trim();
-  }
   function getModel() {
     return localStorage.getItem(LS.model) || "deepseek-chat";
   }
@@ -233,28 +243,44 @@
     renderChat();
   }
 
-  function renderKeyStatus() {
-    const has = !!getKey();
-    modelStatus.innerHTML = has
-      ? '状态：<b class="ws-status-on">已就绪 ✓</b>'
-      : '状态：<b class="ws-status-off">未设置密钥</b>';
+  function renderServiceStatus(ok, text) {
+    serviceStatus.innerHTML = ok
+      ? 'AI 服务：<b class="ws-status-on">' + text + "</b>"
+      : 'AI 服务：<b class="ws-status-off">' + text + "</b>";
+  }
+
+  // ---------- 代理通道 ----------
+  async function pickProxy() {
+    if (activeProxy) return activeProxy;
+    for (const p of PROXIES) {
+      try {
+        const r = await Promise.race([
+          fetch(p.health),
+          new Promise((_, rej) => setTimeout(() => rej(new Error("timeout")), 5000)),
+        ]);
+        if (r && r.ok) {
+          activeProxy = p;
+          renderServiceStatus(true, "在线 ✓ · " + p.name);
+          return p;
+        }
+      } catch (e) {
+        /* 尝试下一个通道 */
+      }
+    }
+    renderServiceStatus(false, "服务暂时不可用");
+    return null;
   }
 
   // ---------- 设置 ----------
-  keyInput.value = localStorage.getItem(LS.key) || "";
   modelSelect.value = getModel();
-  renderKeyStatus();
 
-  keyInput.addEventListener("change", () => {
-    localStorage.setItem(LS.key, keyInput.value.trim());
-    renderKeyStatus();
-  });
-  keyEye.addEventListener("click", () => {
-    keyInput.type = keyInput.type === "password" ? "text" : "password";
-  });
   modelSelect.addEventListener("change", () => {
     localStorage.setItem(LS.model, modelSelect.value);
   });
+
+  // 启动时探测可用通道
+  renderServiceStatus(false, "检测中…");
+  pickProxy();
 
   // ---------- 切换助手 ----------
   tabsEl.addEventListener("click", (e) => {
@@ -298,11 +324,10 @@
   }
 
   function friendlyError(status) {
-    if (status === 401) return "API Key 无效或已删除，请检查设置区的密钥是否复制完整。";
-    if (status === 402) return "DeepSeek 账户余额不足，请到 platform.deepseek.com 充值后重试。";
-    if (status === 422) return "请求参数有误，请调整输入内容后重试。";
-    if (status === 429) return "请求太频繁或额度限流了，休息几秒再试。";
-    if (status >= 500) return "DeepSeek 服务器开小差了，稍等一下再重试。";
+    if (status === 403) return "当前页面不在允许的访问来源内。请通过官网地址访问工作坊。";
+    if (status === 402) return "工作坊额度暂时用完，正在充值维护，请稍后再来或联系谈谈。";
+    if (status === 429) return "请求太频繁了，休息几秒再试。";
+    if (status >= 500) return "AI 服务器开小差了，稍等一下再重试。";
     return "请求失败（HTTP " + status + "），请稍后重试。";
   }
 
@@ -310,13 +335,6 @@
     if (generating) return;
     const text = inputEl.value.trim();
     if (!text) return;
-    const key = getKey();
-    if (!key) {
-      inputEl.value = text;
-      bubble("assistant", "**请先在上方设置你的 DeepSeek API Key。**\n\n到 [platform.deepseek.com](https://platform.deepseek.com) 注册并创建 Key，粘贴到设置区即可开始。密钥只存在你自己的浏览器里。", false);
-      chatEl.scrollTop = chatEl.scrollHeight;
-      return;
-    }
 
     const hist = getHist(current);
     hist.push({ role: "user", content: text });
@@ -329,18 +347,27 @@
     const ai = bubble("assistant", "", true);
     let full = "";
 
+    // 确保有一条可用通道
+    if (!activeProxy) await pickProxy();
+    if (!activeProxy) {
+      ai.body.classList.remove("ws-streaming");
+      ai.body.innerHTML =
+        '<span class="ws-error">AI 服务暂时不可用，请稍后再试；如果持续如此请联系谈谈。</span>';
+      setGenerating(false);
+      controller = null;
+      return;
+    }
+
     controller = new AbortController();
-    try {
-      const messages = [
-        { role: "system", content: ASSISTANTS[current].system },
-        ...hist.slice(-12), // 只带最近 12 条，控制 token 消耗
-      ];
-      const res = await fetch(API_URL, {
+    const messages = [
+      { role: "system", content: ASSISTANTS[current].system },
+      ...hist.slice(-12), // 只带最近 12 条，控制 token 消耗
+    ];
+
+    async function callProxy(p) {
+      return fetch(p.chat, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: "Bearer " + key,
-        },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           model: getModel(),
           messages,
@@ -349,42 +376,75 @@
         }),
         signal: controller.signal,
       });
+    }
+
+    try {
+      // 网络层失败（超时/被墙/断网）时，自动切到另一个通道重试一次
+      let res;
+      try {
+        res = await callProxy(activeProxy);
+      } catch (netErr) {
+        if (netErr && netErr.name === "AbortError") throw netErr;
+        const other = PROXIES.find((p) => p !== activeProxy);
+        if (!other) throw netErr;
+        activeProxy = other;
+        renderServiceStatus(true, "在线 ✓ · " + other.name + "（已自动切换）");
+        res = await callProxy(other);
+      }
 
       if (!res.ok) {
-        ai.body.innerHTML = "";
+        ai.body.classList.remove("ws-streaming");
         ai.body.innerHTML = '<span class="ws-error">' + friendlyError(res.status) + "</span>";
         setGenerating(false);
         controller = null;
         return;
       }
 
-      // 流式读取 SSE
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let buf = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buf += decoder.decode(value, { stream: true });
-        const lines = buf.split("\n");
-        buf = lines.pop();
-        for (const line of lines) {
-          const t = line.trim();
-          if (!t.startsWith("data:")) continue;
-          const payload = t.slice(5).trim();
-          if (payload === "[DONE]") continue;
-          try {
-            const json = JSON.parse(payload);
-            const delta = json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
-            if (delta) {
-              full += delta;
-              ai.body.innerHTML = renderMd(full);
-              chatEl.scrollTop = chatEl.scrollHeight;
+      const ct = (res.headers.get("content-type") || "").toLowerCase();
+      if (ct.indexOf("text/event-stream") !== -1) {
+        // 流式（Cloudflare 通道）：逐段渲染
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buf = "";
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buf += decoder.decode(value, { stream: true });
+          const lines = buf.split("\n");
+          buf = lines.pop();
+          for (const line of lines) {
+            const t = line.trim();
+            if (!t.startsWith("data:")) continue;
+            const payload = t.slice(5).trim();
+            if (payload === "[DONE]") continue;
+            try {
+              const json = JSON.parse(payload);
+              const delta =
+                json.choices && json.choices[0] && json.choices[0].delta && json.choices[0].delta.content;
+              if (delta) {
+                full += delta;
+                ai.body.innerHTML = renderMd(full);
+                chatEl.scrollTop = chatEl.scrollHeight;
+              }
+            } catch (e) {
+              /* 忽略不完整分段 */
             }
-          } catch {
-            /* 忽略不完整的心跳/分段 */
           }
         }
+      } else {
+        // 非流式 JSON（腾讯云函数通道）：一次性渲染
+        const data = await res.json();
+        if (data.error) {
+          ai.body.classList.remove("ws-streaming");
+          ai.body.innerHTML = '<span class="ws-error">' + (data.error || "服务异常") + "</span>";
+          setGenerating(false);
+          controller = null;
+          return;
+        }
+        full =
+          (data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) || "";
+        ai.body.innerHTML = renderMd(full);
+        chatEl.scrollTop = chatEl.scrollHeight;
       }
 
       if (!full) full = "（AI 没有返回内容，请重试）";
@@ -404,7 +464,7 @@
         }
       } else {
         ai.body.innerHTML =
-          '<span class="ws-error">网络异常，连不上 DeepSeek（' + (err && err.message ? err.message : "unknown") + "）。检查网络后重试；如果用代理，请确认浏览器能直连 api.deepseek.com。</span>";
+          '<span class="ws-error">网络异常，暂时连不上 AI 服务。请检查网络后重试。</span>';
       }
     } finally {
       setGenerating(false);

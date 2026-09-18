@@ -1351,6 +1351,19 @@ body.modal-open { overflow: hidden; }
 .ws-status-on { color: #34d399; }
 .ws-status-off { color: #f87171; }
 
+.ws-settings-single {
+  grid-template-columns: 1fr 1.4fr;
+  align-items: center;
+}
+.ws-service-block { text-align: right; }
+.ws-nokey-note { font-size: 13px; color: var(--text-dim); }
+.ws-service-block .ws-model-status { margin-top: 6px; }
+
+@media (max-width: 720px) {
+  .ws-settings-single { grid-template-columns: 1fr; }
+  .ws-service-block { text-align: left; }
+}
+
 .ws-main-wrap { padding: 34px 0 110px; }
 .ws-tabs {
   display: flex;
